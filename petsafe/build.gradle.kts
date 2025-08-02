@@ -59,5 +59,9 @@ dependencies {
     implementation("androidx.wear.compose:compose-material:1.2.1")
     implementation("androidx.activity:activity-compose:1.9.0")
     implementation("androidx.compose.material:material-icons-extended")
+    implementation("com.google.android.gms:play-services-wearable:17.0.0")
+    implementation("com.google.android.gms:play-services-location:18.0.0")
+    implementation("com.google.android.gms:play-services-tasks:17.0.0")
+    implementation("com.google.android.gms:play-services-wearable:18.0.0")
 
 }

@@ -1,16 +1,20 @@
 package com.example.petsafe
 
 import android.Manifest
+import android.R
 import android.annotation.SuppressLint
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.location.Location
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -22,14 +26,20 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import com.example.petsafe.ui.theme.PetSafeTheme
+import com.google.android.gms.common.api.GoogleApiClient
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
-import androidx.compose.ui.Alignment
+import com.google.android.gms.maps.model.CameraPosition
+import com.google.android.gms.maps.model.LatLng
+import com.google.android.gms.wearable.*
 import com.google.maps.android.compose.*
-import com.google.android.gms.maps.model.*
 
 class MainActivity : ComponentActivity() {
+    private lateinit var googleApiClient: GoogleApiClient
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -38,26 +48,63 @@ class MainActivity : ComponentActivity() {
                 PetSafeMainScreen()
             }
         }
-    }
-}
-
-@SuppressLint("MissingPermission")
-fun obtenerUbicacion(context: Context, callback: (Location?) -> Unit) {
-    val fusedLocationClient: FusedLocationProviderClient =
-        LocationServices.getFusedLocationProviderClient(context)
-
-    if (ActivityCompat.checkSelfPermission(
-            context,
-            Manifest.permission.ACCESS_FINE_LOCATION
-        ) != PackageManager.PERMISSION_GRANTED
-    ) {
-        callback(null)
-        return
+        initializeWearableClient()
     }
 
-    fusedLocationClient.lastLocation
-        .addOnSuccessListener { location -> callback(location) }
-        .addOnFailureListener { callback(null) }
+    private fun initializeWearableClient() {
+        googleApiClient = GoogleApiClient.Builder(this)
+            .addApi(Wearable.API)
+            .addConnectionCallbacks(object : GoogleApiClient.ConnectionCallbacks {
+                override fun onConnected(bundle: Bundle?) {
+                    Log.d("Wearable", "✅ Conectado a Wearable API")
+                    setupDataListener()
+                }
+
+                override fun onConnectionSuspended(cause: Int) {
+                    Log.w("Wearable", "⚠️ Conexión suspendida: $cause")
+                }
+            })
+            .build()
+        googleApiClient.connect()
+    }
+
+    private fun setupDataListener() {
+        Wearable.DataApi.addListener(googleApiClient) { dataEvents ->
+            Log.d("Wearable", "📩 Eventos recibidos: ${dataEvents.count}")
+            for (event in dataEvents) {
+                if (event.type == DataEvent.TYPE_CHANGED && event.dataItem.uri.path == "/alert") {
+                    val dataMap = DataMapItem.fromDataItem(event.dataItem).dataMap
+                    val message = dataMap.getString("message")
+                    Log.d("Wearable", "📨 Mensaje recibido: $message")
+                    showNotification()
+                }
+            }
+        }
+    }
+
+    fun showNotification() {
+        val channelId = "wear_channel"
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                channelId,
+                "Alertas Wear",
+                NotificationManager.IMPORTANCE_HIGH
+            )
+            notificationManager.createNotificationChannel(channel)
+        }
+
+        val notification = NotificationCompat.Builder(this, channelId)
+            .setSmallIcon(R.drawable.ic_dialog_alert)
+            .setContentTitle("Alerta del Reloj")
+            .setContentText("¡Zona no segura detectada!")
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .build()
+
+        NotificationManagerCompat.from(this).notify(1, notification)
+        Log.d("Wearable", "🔔 Notificación mostrada")
+    }
 }
 
 @Composable
@@ -83,9 +130,7 @@ fun PetSafeMainScreen() {
     }
 
     Scaffold(
-        topBar = {
-            Text("PetSafe")
-        }
+        topBar = { Text("PetSafe") }
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -163,6 +208,25 @@ fun PetSafeMainScreen() {
             }
         }
     }
+}
+
+@SuppressLint("MissingPermission")
+fun obtenerUbicacion(context: Context, callback: (Location?) -> Unit) {
+    val fusedLocationClient: FusedLocationProviderClient =
+        LocationServices.getFusedLocationProviderClient(context)
+
+    if (ActivityCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) != PackageManager.PERMISSION_GRANTED
+    ) {
+        callback(null)
+        return
+    }
+
+    fusedLocationClient.lastLocation
+        .addOnSuccessListener { location -> callback(location) }
+        .addOnFailureListener { callback(null) }
 }
 
 @Preview(showBackground = true)
